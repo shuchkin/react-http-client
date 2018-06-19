@@ -1,0 +1,25 @@
+{
+    "name": "smspilot/react-http-client",
+    "description": "ReactPHP async HTTP client, minimal dependencies",
+    "keywords": ["http", "reactphp", "client"],
+    "homepage": "https://github.com/smspilot/react-http",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Sergey Shuchkin (SMSPILOT)",
+            "homepage": "https://smspilot.ru/"
+        }
+    ],
+    "require": {
+        "php": ">=5.3.0",
+	    "evenement/evenement": "^3.0 || ^2.0 || ^1.0",
+	    "react/event-loop": "~0.5",
+        "react/socket": "^0.8.11",
+        "react/promise": "^2.2"
+    },
+    "autoload": {
+        "classmap": {
+            "SMSPilot\\SMTPServer": "src/HTTPClient.php"
+        }
+    }
+}
