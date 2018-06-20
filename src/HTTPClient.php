@@ -2,7 +2,7 @@
 
 namespace SMSPilot;
 
-class HTTPClient {
+class HTTPClient extends \Evenement\EventEmitter {
 	public $headers;
 	public $body;
 	public $contentLength;
@@ -40,39 +40,43 @@ class HTTPClient {
 
 			return $new_client->request( $method, $url, $data, $headers );
 		}
+		if ( $method === 'REDIRECT' ) {
+			$method = 'GET';
+		} else {
+			$this->deffered = new \React\Promise\Deferred();
+		}
 		$this->buffer        = '';
 		$this->headers       = [];
 		$this->body          = null;
 		$this->contentLength = false;
 		$this->chunked       = false;
-		$this->busy          = false;
-		$this->deffered      = new \React\Promise\Deferred();
 		$this->busy          = true;
 
-		$u = parse_url( $url );
-//		print_r( $u );
+		$parts = $this->parseURL( $url );
 
-		if ( ! $u || ! isset( $u['host'] ) ) {
+		if ( !$parts['host'] ) {
 			return new \React\Promise\RejectedPromise( new \Exception( 'Bad URL ' . $url ) );
 		}
-		if ( ! isset( $u['scheme'] ) ) {
-			$u['scheme'] = 'http';
+		if ( $this->url ) {
+
+			if ( $this->connection ) {
+				$old = $this->parseURL( $this->url );
+
+				if ( $parts['host'] !== $old['host'] || $parts['port'] !== $old['port'] ) {
+
+					$this->connection->close();
+					$this->connection = null;
+					$this->cookie     = [];
+				}
+			}
 		}
-		if ( $u['host'] !==  parse_url( $this->url, PHP_URL_HOST)) {
-			$this->cookie = [];
-		}
+
 		$this->url = $url;
 
-		$headers['Host'] = $u['host'];
+		$headers['Host'] = $parts['host'];
 
-		$connect_uri = $u['scheme'] === 'https' ? 'tls://' . $u['host'] : 'tcp://' . $u['host'];
-
-		if ( isset( $u['port'] ) ) {
-			$connect_uri .= ':' . $u['port'];
-		} else {
-			$connect_uri .= $u['scheme'] === 'https' ? ':443' : ':80';
-		}
-
+		$connect_uri = $parts['scheme'] === 'https' ? 'tls://' : 'tcp://';
+		$connect_uri .= $parts['host'] .':' . $parts['port'];
 
 		$post = '';
 		if ( $data === null ) {
@@ -95,7 +99,7 @@ class HTTPClient {
 			$headers['Content-Type']   = $content_type;
 			$headers['Content-Length'] = mb_strlen( $post, 'latin1' );
 		}
-		$request = strtoupper( $method ) . ' ' . ( isset( $u['path'] ) ? $u['path'] : '/' ) . ( isset( $u['query'] ) ? '?' . $u['query'] : '' ) . " HTTP/1.1\r\n";
+		$request = strtoupper( $method ) . ' ' . $parts['path'] . ( empty( $parts['query'] ) ? '?' . $parts['query'] : '' ) . " HTTP/1.1\r\n";
 
 		foreach ( $headers as $k => $v ) {
 			$request .= $k . ': ' . $v . "\r\n";
@@ -107,11 +111,18 @@ class HTTPClient {
 			$request .= $post;
 		}
 
+		if ( isset($this->listeners['debug'])) {
+			$this->emit('debug', ['Host: '.$connect_uri."\r\n".$request] );
+		}
+
 		if ( $this->connection && $this->connection->isReadable() ) {
 			$this->connection->write( $request );
 		} else {
 			/** @noinspection NullPointerExceptionInspection */
 			$this->connector->connect( $connect_uri )->then( function ( \React\Socket\ConnectionInterface $connection ) use ( $request ) {
+				if ( isset($this->listeners['debug'])) {
+					$this->emit('debug',['Connected to '.$connection->getRemoteAddress()] );
+				}
 				$this->connection = $connection;
 				$this->connection->write( $request );
 				$this->connection->on( 'data', [ $this, 'handleData' ] );
@@ -134,6 +145,9 @@ class HTTPClient {
 
 	public function handleData( $data ) {
 
+		if ( isset($this->listeners['debug'])) {
+			$this->emit('debug', [ $data ] );
+		}
 		$this->buffer .= $data;
 
 		// read headers
@@ -159,6 +173,8 @@ class HTTPClient {
 						}
 					}
 					$this->body          = '';
+
+
 				}
 
 			}
@@ -209,14 +225,20 @@ class HTTPClient {
 	}
 
 	public function handleEnd() {
-		if ( isset( $this->headers['Connection'] ) && $this->headers['Connection'] === 'close' ) {
+		$this->busy = false;
+
+		if ( isset( $this->headers['Connection'] ) && strtoupper( $this->headers['Connection']) === 'CLOSE' ) {
 			$this->connection->close();
 			$this->connection = null;
+		}
+
+		if ( isset($this->headers['Location']) ) {
+			$this->request('REDIRECT', $this->rel2abs( $this->headers['Location'], $this->url ) );
+			return;
 		}
 		$this->body   = $this->buffer;
 		$this->buffer = '';
 		$this->deffered->resolve( $this );
-		$this->busy = false;
 	}
 
 	public function handleClose() {
@@ -239,20 +261,15 @@ class HTTPClient {
 		if ( preg_match( '/^[a-zA-Z]{0,}:[^\/]{0,1}/i', $relativeUrl ) ) {
 			return null;
 		}
-		$p = parse_url( $baseUrl );
 
-		if (empty($p['scheme'])) {
-			$p['scheme'] = 'http';
-		}
-		if ( empty($p['path'])) {
-			$p['path'] = '/';
-		}
-		$baseHostUrl = $p['scheme'].'://'.$p['host'].(!empty($p['port']) ? ':'.$p['port'] : '');
-		$basePathUrl = $baseHostUrl.$p['path'];
+		$baseParts = $this->parseURL( $baseUrl );
+
+		$baseHostUrl = $baseParts['scheme'].'://'.$baseParts['host'].':'.$baseParts['port'];
+		$basePathUrl = $baseHostUrl.$baseParts['path'];
 
 		// Convert //www.google.com to http://www.google.com
 		if ( 0 === strpos( $relativeUrl, '//' ) ) {
-			return $p['scheme'].':' . $relativeUrl;
+			return $baseParts['scheme'].':' . $relativeUrl;
 		}
 		// If the path is a fragment or query string,
 		// it will be appended to the base url
@@ -284,9 +301,31 @@ class HTTPClient {
 	}
 	// Get the path with last directory
 	// http://example.com/some/fake/path/page.html => http://example.com/some/fake/path/
-	public function uptoLastDir( $url ) {
+	private function uptoLastDir( $url ) {
 		$url = preg_replace( '/\/([^\/]+\.[^\/]+)$/', '', $url );
 
 		return rtrim( $url, '/' ) . '/';
+	}
+	private function parseURL( $url ) {
+		$p = parse_url( $url );
+
+		if ( $p === false ) {
+			$p = [];
+		}
+
+		if (empty($p['scheme'])) {
+			$p['scheme'] = 'http';
+		}
+		if (empty($p['host'])) {
+			$p['host'] = '';
+		}
+		if ( empty($p['path'])) {
+			$p['path'] = '/';
+		}
+		if ( empty($p['port'])) {
+			$p['port'] = $p['scheme'] === 'https' ? '443' : '80';
+		}
+
+		return $p;
 	}
 }
