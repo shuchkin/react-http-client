@@ -20,7 +20,7 @@ class HTTPClient extends \Evenement\EventEmitter {
 	private $buffer;
 	private $chunked;
 
-//	private $keepAlive;
+	public $keepAlive;
 	public function __construct( \React\EventLoop\LoopInterface $loop, $connector = null ) {
 		$this->loop         = $loop;
 		$this->connector    = $connector === null ? new \React\Socket\Connector( $this->loop ) : $connector;
@@ -160,8 +160,9 @@ class HTTPClient extends \Evenement\EventEmitter {
 					$header                   = substr( $line, 0, $p );
 					$header                   = ucwords( strtolower( $header ), '-' ); // CONTENT-LeNgTH -> Content-Length
 					$this->headers[ $header ] = trim( substr( $line, $p + 1 ) );
-				} else if ( preg_match( '/^HTTP\/^\S*\s(.*?)\s/', $line, $m ) ) {
+				} else if ( preg_match( '/^HTTP\/1.[01]\s(\d+)\s(.*)/i', $line, $m ) ) {
 					$this->headers['Status-Code'] = $m[1];
+					$this->headers['Status'] = $m[2];
 				} else { // body
 					$this->contentLength = isset( $this->headers['Content-Length'] ) ? $this->headers['Content-Length'] : false;
 					$this->chunked       = isset( $this->headers['Transfer-Encoding'] ) && ( $this->headers['Transfer-Encoding'] === 'chunked' );
@@ -233,11 +234,20 @@ class HTTPClient extends \Evenement\EventEmitter {
 		}
 
 		if ( isset($this->headers['Location']) ) {
+			$this->numRedirects++;
+			if ( $this->numRedirects > $this->maxRedirects ) {
+				$this->deffered->reject( new \Exception('ERR_TOO_MANY_REDIRECTS'));
+				return;
+			}
 			$this->request('REDIRECT', $this->rel2abs( $this->headers['Location'], $this->url ) );
 			return;
 		}
 		$this->body   = $this->buffer;
 		$this->buffer = '';
+		if (isset($this->headers['Status-Code']) && $this->headers['Status-Code'] >= 400 ) {
+			$this->deffered->reject( new \Exception( $this->headers['Status'], $this->headers['Status-Code'] ));
+			return;
+		}
 		$this->deffered->resolve( $this );
 	}
 
