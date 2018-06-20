@@ -19,6 +19,8 @@ class HTTPClient extends \Evenement\EventEmitter {
 	private $busy;
 	private $buffer;
 	private $chunked;
+	private $curChunkLen;
+	private $curChunk;
 
 	public $keepAlive;
 	public function __construct( \React\EventLoop\LoopInterface $loop, $connector = null ) {
@@ -47,9 +49,11 @@ class HTTPClient extends \Evenement\EventEmitter {
 		}
 		$this->buffer        = '';
 		$this->headers       = [];
-		$this->body          = null;
+		$this->body          = false;
 		$this->contentLength = false;
 		$this->chunked       = false;
+		$this->curChunkLen   = false;
+		$this->curChunk      = false;
 		$this->busy          = true;
 
 		$parts = $this->parseURL( $url );
@@ -150,102 +154,83 @@ class HTTPClient extends \Evenement\EventEmitter {
 		}
 		$this->buffer .= $data;
 
-		// read headers
-		if ( $this->body === null ) {
-			while ( false !== $pos = strpos( $this->buffer, "\r\n" ) ) {
-				$line         = substr( $this->buffer, 0, $pos );
-				$this->buffer = substr( $this->buffer, $pos + 2 );
+		while ( false !== $pos = strpos( $this->buffer, "\r\n" ) ) {
 
-				if ( $p = strpos( $line, ':' ) ) {
+			$line         = substr( $this->buffer, 0, $pos );
+			$this->buffer = substr( $this->buffer, $pos + 2 );
+
+			// read headers
+			if ( $this->body === false ) {
+
+				if ( preg_match( '/^HTTP\/1.[01]\s(\d+)\s(.*)/i', $line, $m ) ) {
+					$this->headers['STATUS-CODE'] = $m[1];
+					$this->headers['STATUS']      = $m[2];
+				} else if ( $p = strpos( $line, ':' ) ) {
 					$header                   = substr( $line, 0, $p );
-					$header                   = ucwords( strtolower( $header ), '-' ); // CONTENT-LeNgTH -> Content-Length
+					$header                   = strtoupper( $header ); // CONTENT-LeNgTH -> CONTENT-LENGTH
 					$this->headers[ $header ] = trim( substr( $line, $p + 1 ) );
-				} else if ( preg_match( '/^HTTP\/1.[01]\s(\d+)\s(.*)/i', $line, $m ) ) {
-					$this->headers['Status-Code'] = $m[1];
-					$this->headers['Status'] = $m[2];
-				} else { // body
-					$this->contentLength = isset( $this->headers['Content-Length'] ) ? $this->headers['Content-Length'] : false;
-					$this->chunked       = isset( $this->headers['Transfer-Encoding'] ) && ( $this->headers['Transfer-Encoding'] === 'chunked' );
-					if ( isset($this->headers['Set-Cookie'])
-						&& preg_match_all( '/([^=]+)=([^;]+);/', $this->headers['Set-Cookie'], $m ) ) {
+				} else if ( $line === '' ) { // body
+
+					$this->contentLength = isset( $this->headers['CONTENT-LENGTH'] ) ? $this->headers['CONTENT-LENGTH'] : false;
+					$this->chunked       = isset( $this->headers['TRANSFER-ENCODING'] ) && ( stripos( $this->headers['TRANSFER-ENCODING'], 'chunked' ) !== false );
+					if ( isset( $this->headers['SET-COOKIE'] )
+					     && preg_match_all( '/([^=]+)=([^;]+);/', $this->headers['SET-COOKIE'], $m ) ) {
 
 						foreach ( $m[0] as $k => $v ) {
 							$this->cookie[ $m[1][ $k ] ] = $m[2][ $k ];
 						}
 					}
-					$this->body          = '';
 
-
+					$this->body = '';
 				}
+			} else if ( $this->contentLength ) {
+				if ( \strlen( $this->buffer ) >= $this->contentLength ) {
+					$this->body   = $this->buffer;
+					$this->buffer = '';
+					$this->handleEnd();
+				}
+			} else if ( $this->chunked ) {
 
-			}
-		} else if ( $this->contentLength && \mb_strlen( $this->buffer, 'latin1' ) >= $this->contentLength ) {
-			$this->handleEnd();
-		}
-
-		/*			if
-					// read content
-					if ( $content_length !== false) {
-
-						$_size = 4096;
-						do {
-							$_data = fread($fp, $_size );
-							$content .= $_data;
-							$_size = min($content_length-strlen($content), 4096);
-						} while( $_size > 0 );
-
-					} else if ($chunked) {
-
-						while ( $chunk_length = hexdec(trim(fgets($fp))) ) {
-
-							$chunk = '';
-							$read_length = 0;
-
-							while ( $read_length < $chunk_length ) {
-
-								$chunk .= fread($fp, $chunk_length - $read_length);
-								$read_length = strlen($chunk);
-
-							}
-							$content .= $chunk;
-
-							fgets($fp);
-
-						}
+				if ( $this->curChunkLen === false ) {
+//					echo "\r\nFIRST=$line";
+					$this->curChunkLen = hexdec( $line );
+					$this->curChunk    = '';
+				} else if ( $line === '' && $this->curChunkLen === 0 ) {
+					echo "\r\nSTOP";
+					$this->handleEnd();
+				} else {
+					$this->curChunk .= $line;
+//					echo "\r\nLEN=" . \strlen( $this->curChunk ) . ' curChunkLen=' . $this->curChunkLen;
+					if ( \strlen( $this->curChunk ) === $this->curChunkLen ) {
+						$this->body        .= $this->curChunk;
+						$this->curChunkLen = false;
 					} else {
-						while(!feof($fp)) {
-							$content .= fread( $fp, 4096 );
-						}
+						$this->curChunk .= "\r\n";
 					}
-					fclose($fp);
-
-		//		echo $content;
-		//		file_put_contents('cache/http_request.log',print_r(get_defined_vars(), true).$eol.$eol.$eol, FILE_APPEND);
-
-					return $content;*/
+				}
+			}
+		}
 	}
 
 	public function handleEnd() {
 		$this->busy = false;
 
-		if ( isset( $this->headers['Connection'] ) && strtoupper( $this->headers['Connection']) === 'CLOSE' ) {
+		if ( isset( $this->headers['CONNECTION'] ) && strtoupper( $this->headers['CONNECTION']) === 'CLOSE' ) {
 			$this->connection->close();
 			$this->connection = null;
 		}
 
-		if ( isset($this->headers['Location']) ) {
+		if ( isset($this->headers['LOCATION']) ) {
 			$this->numRedirects++;
 			if ( $this->numRedirects > $this->maxRedirects ) {
 				$this->deffered->reject( new \Exception('ERR_TOO_MANY_REDIRECTS'));
 				return;
 			}
-			$this->request('REDIRECT', $this->rel2abs( $this->headers['Location'], $this->url ) );
+			$this->request('REDIRECT', $this->rel2abs( $this->headers['LOCATION'], $this->url ) );
 			return;
 		}
-		$this->body   = $this->buffer;
-		$this->buffer = '';
-		if (isset($this->headers['Status-Code']) && $this->headers['Status-Code'] >= 400 ) {
-			$this->deffered->reject( new \Exception( $this->headers['Status'], $this->headers['Status-Code'] ));
+		if (isset($this->headers['STATUS-CODE']) && $this->headers['STATUS-CODE'] >= 400 ) {
+			$this->deffered->reject( new \Exception( $this->headers['STATUS'], $this->headers['STATUS-CODE'] ));
 			return;
 		}
 		$this->deffered->resolve( $this );
