@@ -1,5 +1,5 @@
 {
-    "name": "smspilot/react-http-client",
+    "name": "pilot/react-http-client",
     "description": "ReactPHP async HTTP client, minimal dependencies",
     "keywords": ["http", "reactphp", "client"],
     "homepage": "https://github.com/smspilot/react-http",
@@ -17,9 +17,5 @@
         "react/socket": "^0.8.11",
         "react/promise": "^2.2"
     },
-    "autoload": {
-        "classmap": {
-            "SMSPilot\\SMTPServer": "src/HTTPClient.php"
-        }
-    }
+    "psr-4": {"Pilot\\HTTP\\" : "src" }
 }

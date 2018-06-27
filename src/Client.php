@@ -1,8 +1,8 @@
 <?php
 
-namespace SMSPilot;
+namespace Pilot\HTTP;
 
-class HTTPClient extends \Evenement\EventEmitter {
+class Client extends \Evenement\EventEmitter {
 	public $headers;
 	public $body;
 	public $contentLength;
@@ -21,17 +21,26 @@ class HTTPClient extends \Evenement\EventEmitter {
 	private $chunked;
 	private $curChunkLen;
 	private $curChunk;
+	private $options;
 
 	public $keepAlive;
-	public function __construct( \React\EventLoop\LoopInterface $loop, $connector = null ) {
+	public function __construct( \React\EventLoop\LoopInterface $loop, array $options = [] ) {
+
+		$this->options = array_merge([
+			'timeout' => false,
+		], $options );
+
 		$this->loop         = $loop;
-		$this->connector    = $connector === null ? new \React\Socket\Connector( $this->loop ) : $connector;
+		$this->connector    = new \React\Socket\Connector( $this->loop, $options );
 		$this->maxRedirects = 10;
 		$this->numRedirects = 0;
 	}
 
 	public function get( $url, array $headers = [] ) {
-		return $this->request( 'GET', $url, $headers );
+		return $this->request( 'GET', $url, null, $headers );
+	}
+	public function post( $url, $data, array $headers = [] ) {
+		return $this->request( 'POST', $url, $data, $headers );
 	}
 
 	public function request( $method, $url, $data = null, array $headers = [] ) {
@@ -41,6 +50,9 @@ class HTTPClient extends \Evenement\EventEmitter {
 			$new_client->url = $this->url;
 
 			return $new_client->request( $method, $url, $data, $headers );
+		}
+		if ( isset($this->listeners['debug'])) {
+			$this->emit( 'debug', [$method.' '.$url.' data='.gettype($data).' headers='.count($headers)] );
 		}
 		if ( $method === 'REDIRECT' ) {
 			$method = 'GET';
@@ -61,23 +73,23 @@ class HTTPClient extends \Evenement\EventEmitter {
 		if ( !$parts['host'] ) {
 			return new \React\Promise\RejectedPromise( new \Exception( 'Bad URL ' . $url ) );
 		}
-		if ( $this->url ) {
+		if ( $this->url && $this->connection ) {
 
-			if ( $this->connection ) {
-				$old = $this->parseURL( $this->url );
+			$old = $this->parseURL( $this->url );
 
-				if ( $parts['host'] !== $old['host'] || $parts['port'] !== $old['port'] ) {
+			if ( $parts['host'] !== $old['host'] || $parts['port'] !== $old['port'] ) {
 
-					$this->connection->close();
-					$this->connection = null;
-					$this->cookie     = [];
-				}
+				$this->connection->close();
+				$this->connection = null;
+				$this->cookie     = [];
 			}
 		}
 
 		$this->url = $url;
 
-		$headers['Host'] = $parts['host'];
+		if ( !isset( $headers['Host'])) {
+			$headers['Host'] = $parts['host'];
+		}
 
 		$connect_uri = $parts['scheme'] === 'https' ? 'tls://' : 'tcp://';
 		$connect_uri .= $parts['host'] .':' . $parts['port'];
@@ -103,7 +115,7 @@ class HTTPClient extends \Evenement\EventEmitter {
 			$headers['Content-Type']   = $content_type;
 			$headers['Content-Length'] = mb_strlen( $post, 'latin1' );
 		}
-		$request = strtoupper( $method ) . ' ' . $parts['path'] . ( empty( $parts['query'] ) ? '?' . $parts['query'] : '' ) . " HTTP/1.1\r\n";
+		$request = strtoupper( $method ) . ' ' . $parts['path'] . ( !empty( $parts['query'] ) ? '?' . $parts['query'] : '' ) . " HTTP/1.1\r\n";
 
 		foreach ( $headers as $k => $v ) {
 			$request .= $k . ': ' . $v . "\r\n";
@@ -118,33 +130,32 @@ class HTTPClient extends \Evenement\EventEmitter {
 		if ( isset($this->listeners['debug'])) {
 			$this->emit('debug', ['Host: '.$connect_uri."\r\n".$request] );
 		}
-
+		// keep alive?
 		if ( $this->connection && $this->connection->isReadable() ) {
 			$this->connection->write( $request );
 		} else {
-			/** @noinspection NullPointerExceptionInspection */
-			$this->connector->connect( $connect_uri )->then( function ( \React\Socket\ConnectionInterface $connection ) use ( $request ) {
-				if ( isset($this->listeners['debug'])) {
-					$this->emit('debug',['Connected to '.$connection->getRemoteAddress()] );
-				}
-				$this->connection = $connection;
-				$this->connection->write( $request );
-				$this->connection->on( 'data', [ $this, 'handleData' ] );
-				$this->connection->on( 'end', [ $this, 'handleEnd' ] );
-				$this->connection->on( 'close', [ $this, 'handleClose' ] );
-				$this->connection->on( 'error', [ $this, 'handleError' ] );
-			},
-				function ( \Exception $ex ) {
-					$this->deffered->reject( $ex );
-				}
-			);
+			$con_promise = $this->connector->connect( $connect_uri );
+			if ( $con_promise ) {
+				$con_promise->then(
+					function ( \React\Socket\ConnectionInterface $connection ) use ( $request ) {
+						if ( isset( $this->listeners['debug'] ) ) {
+							$this->emit( 'debug', [ 'Connected to ' . $connection->getRemoteAddress() ] );
+						}
+						$this->connection = $connection;
+						$this->connection->write( $request );
+						$this->connection->on( 'data', [ $this, 'handleData' ] );
+						$this->connection->on( 'end', [ $this, 'handleEnd' ] );
+						$this->connection->on( 'close', [ $this, 'handleClose' ] );
+						$this->connection->on( 'error', [ $this, 'handleError' ] );
+					},
+					function ( \Exception $ex ) {
+						$this->deffered->reject( $ex );
+					}
+				);
+			}
 		}
 
 		return $this->deffered->promise();
-	}
-
-	public function post( $url, $data, array $headers = [] ) {
-		return $this->request( 'POST', $url, $data, $headers );
 	}
 
 	public function handleData( $data ) {
@@ -196,13 +207,16 @@ class HTTPClient extends \Evenement\EventEmitter {
 					$this->curChunkLen = hexdec( $line );
 					$this->curChunk    = '';
 				} else if ( $line === '' && $this->curChunkLen === 0 ) {
-					echo "\r\nSTOP";
 					$this->handleEnd();
 				} else {
 					$this->curChunk .= $line;
 //					echo "\r\nLEN=" . \strlen( $this->curChunk ) . ' curChunkLen=' . $this->curChunkLen;
 					if ( \strlen( $this->curChunk ) === $this->curChunkLen ) {
-						$this->body        .= $this->curChunk;
+						if ( isset($this->listeners['chunk'])) {
+							$this->emit( 'chunk', [$this->curChunk, $this] );
+						} else {
+							$this->body .= $this->curChunk;
+						}
 						$this->curChunkLen = false;
 					} else {
 						$this->curChunk .= "\r\n";

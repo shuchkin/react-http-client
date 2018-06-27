@@ -4,18 +4,24 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 
 $loop = \React\EventLoop\Factory::create();
 
-$http = new \SMSPilot\HTTPClient( $loop );
-$http->get( 'http://ya.ru/notfound' )->then( function ( \SMSPilot\HTTPClient $client ) {
-
-	echo print_r( $client->body, true );
-	echo print_r( $client->headers, true );
+$http = new \Pilot\HTTP\Client( $loop );
+$http->get( 'https://jigsaw.w-3.org/HTTP/ChunkedScript' )->then( function ( \Pilot\HTTP\Client $client ) {
+	echo "\r\nHEADERS------------------------\r\n";
+	/** @noinspection ForgottenDebugOutputInspection */
+	print_r( $client->headers );
+	echo "\r\nBODY-------------------------\r\n".$client->body;
+	echo "\r\n".strlen( $client->body );
 
 }, function ( \Exception $ex ) {
 
-	echo $ex->getCode().' '.$ex->getMessage();
+	echo 'ERROR '.$ex->getCode().' '.$ex->getMessage();
 
 } );
 
-$http->on('debug', function( $s ) { echo trim($s).PHP_EOL; } );
+$http->on('chunk', function( $chunk ) {
+	echo "\r\n-- CHUNK=".$chunk;
+});
+
+//$http->on('debug', function( $s ) { echo trim($s).PHP_EOL; } );
 
 $loop->run();
