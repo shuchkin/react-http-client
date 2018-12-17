@@ -1,6 +1,6 @@
 <?php
 
-namespace Pilot\HTTP;
+namespace Shuchkin\ReactHTTP;
 
 class Client extends \Evenement\EventEmitter {
 	public $headers;
@@ -21,12 +21,11 @@ class Client extends \Evenement\EventEmitter {
 	private $chunked;
 	private $curChunkLen;
 	private $curChunk;
-	private $options;
 
 	public $keepAlive;
 	public function __construct( \React\EventLoop\LoopInterface $loop, array $options = [] ) {
 
-		$this->options = array_merge([
+		$options = array_merge([
 			'timeout' => false,
 		], $options );
 
@@ -165,6 +164,15 @@ class Client extends \Evenement\EventEmitter {
 		}
 		$this->buffer .= $data;
 
+		if ( $this->body !== false
+			&& $this->contentLength
+			&& \strlen( $this->buffer ) >= $this->contentLength )
+		{
+			$this->body   = $this->buffer;
+			$this->buffer = '';
+			$this->handleEnd();
+		}
+
 		while ( false !== $pos = strpos( $this->buffer, "\r\n" ) ) {
 
 			$line         = substr( $this->buffer, 0, $pos );
@@ -193,12 +201,6 @@ class Client extends \Evenement\EventEmitter {
 					}
 
 					$this->body = '';
-				}
-			} else if ( $this->contentLength ) {
-				if ( \strlen( $this->buffer ) >= $this->contentLength ) {
-					$this->body   = $this->buffer;
-					$this->buffer = '';
-					$this->handleEnd();
 				}
 			} else if ( $this->chunked ) {
 
@@ -230,8 +232,7 @@ class Client extends \Evenement\EventEmitter {
 		$this->busy = false;
 
 		if ( isset( $this->headers['CONNECTION'] ) && strtoupper( $this->headers['CONNECTION']) === 'CLOSE' ) {
-			$this->connection->close();
-			$this->connection = null;
+			$this->close();
 		}
 
 		if ( isset($this->headers['LOCATION']) ) {
@@ -251,13 +252,23 @@ class Client extends \Evenement\EventEmitter {
 	}
 
 	public function handleClose() {
+		if ( isset($this->listeners['close'])) {
+			$this->emit( 'close', [ $this ] );
+		}
 		$this->busy = false;
 		$this->connection = null;
+		if (isset($this->listeners['debug'])) {
+			$this->emit('debug', [get_class($this).' closed']);
+		}
 	}
 
 	public function handleError( \Exception $ex ) {
 		$this->deffered->reject( $ex );
 		$this->busy = false;
+	}
+
+	public function close() {
+		$this->connection->close();
 	}
 
 	public function rel2abs( $relativeUrl, $baseUrl ) {

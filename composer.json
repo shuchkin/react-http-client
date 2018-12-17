@@ -1,13 +1,13 @@
 {
-    "name": "pilot/react-http-client",
+    "name": "shuchkin/react-http-client",
     "description": "ReactPHP async HTTP client, minimal dependencies",
     "keywords": ["http", "reactphp", "client"],
-    "homepage": "https://github.com/smspilot/react-http",
+    "homepage": "https://github.com/shuchkin/react-http-client",
     "license": "MIT",
     "authors": [
         {
             "name": "Sergey Shuchkin (SMSPILOT)",
-            "homepage": "https://smspilot.ru/"
+            "homepage": "http://www.shuchkin.ru/"
         }
     ],
     "require": {
@@ -17,5 +17,9 @@
         "react/socket": "^0.8.11",
         "react/promise": "^2.2"
     },
-    "psr-4": {"Pilot\\HTTP\\" : "src" }
+    "autoload": {
+        "psr-4": {
+            "Shuchkin\\ReactHTTP\\": "src"
+        }
+    }
 }
