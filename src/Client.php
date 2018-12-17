@@ -116,6 +116,10 @@ class Client extends \Evenement\EventEmitter {
 		}
 		$request = strtoupper( $method ) . ' ' . $parts['path'] . ( !empty( $parts['query'] ) ? '?' . $parts['query'] : '' ) . " HTTP/1.1\r\n";
 
+		if ( !isset($headers['User-Agent'])) {
+			$headers['User-Agent'] = 'ReactPHP HTTP Client 0.2';
+		}
+
 		foreach ( $headers as $k => $v ) {
 			$request .= $k . ': ' . $v . "\r\n";
 		}

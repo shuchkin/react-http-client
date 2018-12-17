@@ -6,7 +6,7 @@ $loop = \React\EventLoop\Factory::create();
 
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
-$http->get( 'https://raw.githubusercontent.com/shuchkin/react-http-client/master/README.md' )->then( function ( \Shuchkin\ReactHTTP\Client $client ) {
+$http->get( 'https://tools.ietf.org/html/rfc2616' )->then( function ( \Shuchkin\ReactHTTP\Client $client ) {
 
 	echo $client->content;
 
