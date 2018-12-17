@@ -5,20 +5,16 @@ require_once __DIR__ . '/../vendor/autoload.php';
 $loop = \React\EventLoop\Factory::create();
 
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
-$http->get( 'https://jigsaw.w3.org/HTTP/ChunkedScript' )->then( function () {
 
-	echo PHP_EOL . 'Mission complete';
+$http->post( 'https://reqres.in/api/users', '{"name": "morpheus","job": "leader"}' )->then( function ( \Shuchkin\ReactHTTP\Client $client ) {
+
+	echo $client->content;
 
 }, function ( \Exception $ex ) {
 
-	echo 'ERROR '.$ex->getCode().' '.$ex->getMessage();
+	echo 'HTTP error '.$ex->getCode().' '.$ex->getMessage();
 
 } );
-
-$http->on('chunk', function( $chunk ) {
-	echo PHP_EOL.'-- CHUNK='.$chunk;
-	//$client->
-});
 
 //$http->on('debug', function( $s ) { echo trim($s).PHP_EOL; } );
 

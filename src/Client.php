@@ -41,6 +41,12 @@ class Client extends \Evenement\EventEmitter {
 	public function post( $url, $data, array $headers = [] ) {
 		return $this->request( 'POST', $url, $data, $headers );
 	}
+	public function put( $url, $data, array $headers = [] ) {
+		return $this->request( 'PUT', $url, $data, $headers );
+	}
+	public function delete( $url, array $headers = [] ) {
+		return $this->request( 'DELETE', $url, null, $headers );
+	}
 
 	public function request( $method, $url, $data = null, array $headers = [] ) {
 		if ( $this->busy ) {
