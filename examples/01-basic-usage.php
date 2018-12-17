@@ -8,7 +8,7 @@ $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
 $http->get( 'https://raw.githubusercontent.com/shuchkin/react-http-client/master/README.md' )->then( function ( \Shuchkin\ReactHTTP\Client $client ) {
 
-	echo 'Content='.$client->content;
+	echo $client->content;
 
 }, function ( \Exception $ex ) {
 
@@ -16,6 +16,6 @@ $http->get( 'https://raw.githubusercontent.com/shuchkin/react-http-client/master
 
 } );
 
-$http->on('debug', function( $s ) { echo trim($s).PHP_EOL; } );
+//$http->on('debug', function( $s ) { echo trim($s).PHP_EOL; } );
 
 $loop->run();
