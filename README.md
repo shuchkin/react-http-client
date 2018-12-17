@@ -47,7 +47,7 @@ $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
 $http->get('GET', 'https://jigsaw.w3.org/HTTP/TE/foo.txt',['User-Agent' => 'ReactPHP Awesome'] )->then(
 	function ( $content ) {
-        echo $content;
+		echo $content;
 	},
 	function ( \Exception $ex ) {
 		echo 'HTTP error '.$ex->getCode().' '.$ex->getMessage();
