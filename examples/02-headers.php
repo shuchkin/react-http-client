@@ -12,9 +12,9 @@ $http->get( 'https://jigsaw.w3.org/HTTP/TE/foo.txt' )->then( function ( \Shuchki
 	/** @noinspection ForgottenDebugOutputInspection */
 	print_r( $client->headers );
 
-	echo PHP_EOL.'BODY-------------------------'.PHP_EOL.$client->body;
+	echo PHP_EOL.'BODY-------------------------'.PHP_EOL.$client->content;
 
-	echo PHP_EOL.'Body length='.strlen( $client->body );
+	echo PHP_EOL.'Content real length='.strlen( $client->content );
 
 }, function ( \Exception $ex ) {
 

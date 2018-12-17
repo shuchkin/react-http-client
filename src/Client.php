@@ -4,7 +4,7 @@ namespace Shuchkin\ReactHTTP;
 
 class Client extends \Evenement\EventEmitter {
 	public $headers;
-	public $body;
+	public $content;
 	public $contentLength;
 	public $cookie;
 	public $url;
@@ -60,7 +60,7 @@ class Client extends \Evenement\EventEmitter {
 		}
 		$this->buffer        = '';
 		$this->headers       = [];
-		$this->body          = false;
+		$this->content       = false;
 		$this->contentLength = false;
 		$this->chunked       = false;
 		$this->curChunkLen   = false;
@@ -164,66 +164,76 @@ class Client extends \Evenement\EventEmitter {
 		}
 		$this->buffer .= $data;
 
-		if ( $this->body !== false
-			&& $this->contentLength
-			&& \strlen( $this->buffer ) >= $this->contentLength )
-		{
-			$this->body   = $this->buffer;
-			$this->buffer = '';
-			$this->handleEnd();
+		// Read headers
+		if ( $this->content === false ) {
+			while ( false !== $pos = strpos( $this->buffer, "\r\n" ) ) {
+
+				$line         = substr( $this->buffer, 0, $pos );
+				$this->buffer = substr( $this->buffer, $pos + 2 );
+
+				// read headers
+				if ( $this->content === false ) {
+
+					if ( preg_match( '/^HTTP\/1.[01]\s(\d+)\s(.*)/i', $line, $m ) ) {
+						$this->headers['STATUS-CODE'] = $m[1];
+						$this->headers['STATUS']      = $m[2];
+					} else if ( $p = strpos( $line, ':' ) ) {
+						$header                   = substr( $line, 0, $p );
+						$header                   = strtoupper( $header ); // CONTENT-LeNgTH -> CONTENT-LENGTH
+						$this->headers[ $header ] = trim( substr( $line, $p + 1 ) );
+					} else if ( $line === '' ) { // body
+
+						$this->contentLength = isset( $this->headers['CONTENT-LENGTH'] ) ? $this->headers['CONTENT-LENGTH'] : false;
+						$this->chunked       = isset( $this->headers['TRANSFER-ENCODING'] ) && ( stripos( $this->headers['TRANSFER-ENCODING'], 'chunked' ) !== false );
+						if ( isset( $this->headers['SET-COOKIE'] )
+						     && preg_match_all( '/([^=]+)=([^;]+);/', $this->headers['SET-COOKIE'], $m ) ) {
+
+							foreach ( $m[0] as $k => $v ) {
+								$this->cookie[ $m[1][ $k ] ] = $m[2][ $k ];
+							}
+						}
+
+						$this->content = '';
+						break;
+					}
+				}
+			}
 		}
 
-		while ( false !== $pos = strpos( $this->buffer, "\r\n" ) ) {
+		if ( $this->content !== false ) {
+			if ( $this->chunked ) {
+				while ( false !== $pos = strpos( $this->buffer, "\r\n" ) ) {
 
-			$line         = substr( $this->buffer, 0, $pos );
-			$this->buffer = substr( $this->buffer, $pos + 2 );
-
-			// read headers
-			if ( $this->body === false ) {
-
-				if ( preg_match( '/^HTTP\/1.[01]\s(\d+)\s(.*)/i', $line, $m ) ) {
-					$this->headers['STATUS-CODE'] = $m[1];
-					$this->headers['STATUS']      = $m[2];
-				} else if ( $p = strpos( $line, ':' ) ) {
-					$header                   = substr( $line, 0, $p );
-					$header                   = strtoupper( $header ); // CONTENT-LeNgTH -> CONTENT-LENGTH
-					$this->headers[ $header ] = trim( substr( $line, $p + 1 ) );
-				} else if ( $line === '' ) { // body
-
-					$this->contentLength = isset( $this->headers['CONTENT-LENGTH'] ) ? $this->headers['CONTENT-LENGTH'] : false;
-					$this->chunked       = isset( $this->headers['TRANSFER-ENCODING'] ) && ( stripos( $this->headers['TRANSFER-ENCODING'], 'chunked' ) !== false );
-					if ( isset( $this->headers['SET-COOKIE'] )
-					     && preg_match_all( '/([^=]+)=([^;]+);/', $this->headers['SET-COOKIE'], $m ) ) {
-
-						foreach ( $m[0] as $k => $v ) {
-							$this->cookie[ $m[1][ $k ] ] = $m[2][ $k ];
-						}
-					}
-
-					$this->body = '';
-				}
-			} else if ( $this->chunked ) {
-
-				if ( $this->curChunkLen === false ) {
-//					echo "\r\nFIRST=$line";
-					$this->curChunkLen = hexdec( $line );
-					$this->curChunk    = '';
-				} else if ( $line === '' && $this->curChunkLen === 0 ) {
-					$this->handleEnd();
-				} else {
-					$this->curChunk .= $line;
-//					echo "\r\nLEN=" . \strlen( $this->curChunk ) . ' curChunkLen=' . $this->curChunkLen;
-					if ( \strlen( $this->curChunk ) === $this->curChunkLen ) {
-						if ( isset($this->listeners['chunk'])) {
-							$this->emit( 'chunk', [$this->curChunk, $this] );
-						} else {
-							$this->body .= $this->curChunk;
-						}
-						$this->curChunkLen = false;
+					$line         = substr( $this->buffer, 0, $pos );
+					$this->buffer = substr( $this->buffer, $pos + 2 );
+					if ( $this->curChunkLen === false ) {
+						//					echo "\r\nFIRST=$line";
+						$this->curChunkLen = hexdec( $line );
+						$this->curChunk    = '';
+					} else if ( $line === '' && $this->curChunkLen === 0 ) {
+						$this->handleEnd();
 					} else {
-						$this->curChunk .= "\r\n";
+						$this->curChunk .= $line;
+						//					echo "\r\nLEN=" . \strlen( $this->curChunk ) . ' curChunkLen=' . $this->curChunkLen;
+						if ( \strlen( $this->curChunk ) === $this->curChunkLen ) {
+							if ( isset( $this->listeners['chunk'] ) ) {
+								$this->emit( 'chunk', [ $this->curChunk, $this ] );
+							} else {
+								$this->content .= $this->curChunk;
+							}
+							$this->curChunkLen = false;
+						} else {
+							$this->curChunk .= "\r\n";
+						}
 					}
 				}
+			}
+
+			if ( $this->contentLength
+			     && \strlen( $this->buffer ) >= $this->contentLength ) {
+				$this->content = $this->buffer;
+				$this->buffer  = '';
+				$this->handleEnd();
 			}
 		}
 	}
