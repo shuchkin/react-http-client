@@ -78,7 +78,7 @@ $loop->run();
 ```
 
 ## Get headers & debug
-```
+```php
 $loop = \React\EventLoop\Factory::create();
 
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
