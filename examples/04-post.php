@@ -6,9 +6,9 @@ $loop = \React\EventLoop\Factory::create();
 
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
-$http->post( 'https://reqres.in/api/users', '{"name": "morpheus","job": "leader"}' )->then( function ( \Shuchkin\ReactHTTP\Client $client ) {
+$http->post( 'https://reqres.in/api/users', '{"name": "morpheus","job": "leader"}' )->then( function ( $content ) {
 
-	echo $client->content;
+	echo $content;
 
 }, function ( \Exception $ex ) {
 

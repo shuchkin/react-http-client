@@ -21,6 +21,7 @@ class Client extends \Evenement\EventEmitter {
 	private $chunked;
 	private $curChunkLen;
 	private $curChunk;
+	private $resultAsContents;
 
 	public $keepAlive;
 	public function __construct( \React\EventLoop\LoopInterface $loop, array $options = [] ) {
@@ -33,29 +34,33 @@ class Client extends \Evenement\EventEmitter {
 		$this->connector    = new \React\Socket\Connector( $this->loop, $options );
 		$this->maxRedirects = 10;
 		$this->numRedirects = 0;
+
 	}
 
 	public function get( $url, array $headers = [] ) {
-		return $this->request( 'GET', $url, null, $headers );
+		return $this->request( 'GET', $url, null, $headers, true );
 	}
 	public function post( $url, $data, array $headers = [] ) {
-		return $this->request( 'POST', $url, $data, $headers );
+		return $this->request( 'POST', $url, $data, $headers, true );
 	}
 	public function put( $url, $data, array $headers = [] ) {
-		return $this->request( 'PUT', $url, $data, $headers );
+		return $this->request( 'PUT', $url, $data, $headers, true );
 	}
 	public function delete( $url, array $headers = [] ) {
-		return $this->request( 'DELETE', $url, null, $headers );
+		return $this->request( 'DELETE', $url, null, $headers, true );
 	}
 
-	public function request( $method, $url, $data = null, array $headers = [] ) {
+	public function request( $method, $url, $data = null, array $headers = [], $result_as_contents = false ) {
 		if ( $this->busy ) {
 			$new_client = new self( $this->loop );
 			$new_client->cookie = $this->cookie;
 			$new_client->url = $this->url;
 
-			return $new_client->request( $method, $url, $data, $headers );
+			return $new_client->request( $method, $url, $data, $headers, $result_as_contents );
 		}
+
+		$this->resultAsContents = $result_as_contents;
+
 		if ( isset($this->listeners['debug'])) {
 			$this->emit( 'debug', [$method.' '.$url.' data='.gettype($data).' headers='.count($headers)] );
 		}
@@ -268,7 +273,7 @@ class Client extends \Evenement\EventEmitter {
 			$this->deffered->reject( new \Exception( $this->headers['STATUS'], $this->headers['STATUS-CODE'] ));
 			return;
 		}
-		$this->deffered->resolve( $this );
+		$this->deffered->resolve( $this->resultAsContents ? $this->content : $this );
 	}
 
 	public function handleClose() {

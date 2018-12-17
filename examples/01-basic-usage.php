@@ -6,9 +6,9 @@ $loop = \React\EventLoop\Factory::create();
 
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
-$http->get( 'https://tools.ietf.org/html/rfc2616' )->then( function ( \Shuchkin\ReactHTTP\Client $client ) {
+$http->get( 'https://tools.ietf.org/html/rfc2616' )->then( function ( $content ) {
 
-	echo $client->content;
+	echo $content;
 
 }, function ( \Exception $ex ) {
 
