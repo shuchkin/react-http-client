@@ -45,7 +45,7 @@ $loop->run();
 $loop = \React\EventLoop\Factory::create();
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
-$http->get('GET', 'https://jigsaw.w3.org/HTTP/TE/foo.txt',['User-Agent' => 'ReactPHP Awesome'] )->then(
+$http->get('https://jigsaw.w3.org/HTTP/TE/foo.txt',['User-Agent' => 'ReactPHP Awesome'] )->then(
 	function ( $content ) {
 		echo $content;
 	},
