@@ -11,7 +11,7 @@ $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
 $http->get( 'http://api.ipify.org' )->then(
 	function( $content ) {
-		echo $content; // 123.12.12.1
+		echo $content; // 123.45.67.1
 	}
 );
 
