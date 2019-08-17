@@ -1,19 +1,15 @@
-# react-http-client
+# react-http-client 0.2
 ReactPHP async HTTP client, minimal dependencies:
 https://reactphp.org/
 
 ## Basic Usage
 ```php
 $loop = \React\EventLoop\Factory::create();
-
 $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
-$http->get( 'https://tools.ietf.org/rfc/rfc2068.txt' )->then(
+$http->get( 'http://api.ipify.org' )->then(
 	function( $content ) {
-		echo $content;
-	},
-	function ( \Exception $ex ) {
-		echo 'HTTP error '.$ex->getCode().' '.$ex->getMessage();
+		echo $content; // 123.12.12.1
 	}
 );
 
