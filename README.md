@@ -1,4 +1,6 @@
 # react-http-client 0.2
+[<img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fshuchkin" />](https://www.patreon.com/shuchkin)
+
 ReactPHP async HTTP client, minimal dependencies:
 https://reactphp.org/
 
@@ -9,7 +11,7 @@ $http = new \Shuchkin\ReactHTTP\Client( $loop );
 
 $http->get( 'http://api.ipify.org' )->then(
 	function( $content ) {
-		echo $content; // out 123.12.12.1
+		echo $content; // 123.12.12.1
 	}
 );
 
